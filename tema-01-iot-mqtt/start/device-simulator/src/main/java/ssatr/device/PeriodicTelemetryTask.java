@@ -1,6 +1,8 @@
 package ssatr.device;
 
+import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * TASK PERIODIC, cu perioada T = periodMs: fiecare job citește senzorul și
@@ -31,22 +33,48 @@ public class PeriodicTelemetryTask implements Runnable {
 
     @Override
     public void run() {
-        // TODO 1: implementați bucla taskului periodic. Fiecare job:
-        //   - citiți temperatura: sensor.read()
-        //   - publicați pe Config.telemetryTopic(deviceId) mesajul "deviceId;timestamp;temperatura"
-        //     (timestamp = System.currentTimeMillis(); temperatura cu punct zecimal,
-        //      de ex. String.format(Locale.US, "%.2f", t), ca să poată fi citită
-        //      cu Double.parseDouble în business-service)
-        //   - dacă temperatura > threshold, puneți valoarea în coada alarmEvents
-        //
-        // Folosiți așteptare absolută, nu relativă: Thread.sleep(periodMs) după
-        // fiecare job duce la derivă (perioada reală devine T + C + întârzieri).
-        // Calculați eliberarea următorului job pe grilă (next = next + periodMs)
-        // și așteptați doar cât a mai rămas până la ea. Pentru grilă folosiți
-        // un timp monoton: System.nanoTime().
-        //
-        // periodMs se poate schimba în timpul rulării (comanda SET_INTERVAL),
-        // deci citiți-l la fiecare job.
+        // r0 = momentul primei eliberări; grila se calculează pe timp monoton
+        long next = System.nanoTime();
+        long k = 0;
+
+        try {
+            while (!Thread.currentThread().isInterrupted()) {
+                // 1. așteptare ABSOLUTĂ până la eliberarea r_k de pe grilă
+                long wait = next - System.nanoTime();
+                if (wait > 0) {
+                    TimeUnit.NANOSECONDS.sleep(wait);
+                }
+
+                // 2. jobul k: citire senzor + publicare
+                long lateMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - next);
+                double t = sensor.read();
+                long timestamp = System.currentTimeMillis();
+                String payload = deviceId + ";" + timestamp + ";" + String.format(Locale.US, "%.2f", t);
+
+                mqtt.publish(Config.telemetryTopic(deviceId), payload);
+                System.out.printf("[periodic] job %d  T=%d ms  intarziere=%d ms  -> %s%n",
+                        k, periodMs, lateMs, payload);
+
+                // 3. depășire de prag: doar semnalăm evenimentul, alarma e tratată de taskul sporadic
+                if (t > threshold) {
+                    alarmEvents.offer(t);
+                }
+
+                // 4. următoarea eliberare: r_{k+1} = r_k + T (periodMs citit din nou, poate fi schimbat)
+                long periodNs = TimeUnit.MILLISECONDS.toNanos(periodMs);
+                next += periodNs;
+
+                // dacă jobul a depășit perioada, sărim peste eliberările pierdute, rămânând pe grilă
+                long now = System.nanoTime();
+                if (now > next) {
+                    long missed = (now - next) / periodNs + 1;
+                    next += missed * periodNs;
+                }
+                k++;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); // oprire curată a taskului
+        }
     }
 
     public void setPeriodMs(long periodMs) {

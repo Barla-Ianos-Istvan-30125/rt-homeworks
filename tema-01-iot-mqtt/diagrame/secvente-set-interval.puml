@@ -1,0 +1,38 @@
+@startuml secventa-set-interval
+title Scenariul 2 - operatorul trimite SET_INTERVAL, iar device-ul confirma
+
+actor Operator
+participant "CommandConsole" as CC
+participant "MqttConnection\n(service)" as SMQ
+participant "Broker MQTT" as BR
+participant "MqttConnection\n(device-1)" as DMQ
+queue "commands" as CQ
+participant "AperiodicCommandTask" as AC
+participant "PeriodicTelemetryTask" as PT
+participant "MessageProcessor\n(status)" as MP
+participant "CsvStorage" as CSV
+participant "Dashboard" as DB
+
+Operator -> CC : "device-1 SET_INTERVAL 1000"
+CC -> CC : split -> deviceId = device-1,\ncomanda = "SET_INTERVAL 1000"
+CC -> SMQ : publish(commandTopic("device-1"), "SET_INTERVAL 1000")
+SMQ ->> BR : PUBLISH .../device-1/commands
+CC --> Operator : "Trimis catre device-1: SET_INTERVAL 1000"
+
+BR ->> DMQ : livreaza comanda
+DMQ ->> CQ : put("SET_INTERVAL 1000")
+
+== Eliberarea jobului aperiodic (in ordinea sosirii) ==
+CQ -> AC : take() -> "SET_INTERVAL 1000"
+AC -> AC : execute(): valideaza parametrul
+AC -> PT : setPeriodMs(1000)
+note right of PT : periodMs este volatile;\nnoua perioada se aplica\nde la urmatoarea eliberare
+AC -> DMQ : publish(status, "device-1;ts;OK SET_INTERVAL 1000")
+DMQ ->> BR : PUBLISH .../device-1/status
+
+BR ->> SMQ : livreaza confirmarea
+SMQ ->> MP : put (statusInbox)
+MP -> CSV : append("status", mesaj)
+MP -> DB : updateStatus("device-1", "OK SET_INTERVAL 1000")
+MP --> Operator : afiseaza imediat\n[STATUS] device-1: OK SET_INTERVAL 1000
+@enduml

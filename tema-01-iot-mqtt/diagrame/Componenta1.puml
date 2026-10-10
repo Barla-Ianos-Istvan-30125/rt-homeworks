@@ -1,0 +1,56 @@
+@startuml componente
+title Tema 01 - Diagrama de componente
+
+skinparam componentStyle uml2
+left to right direction
+
+actor Operator
+
+package "device-simulator  (o instanta pentru fiecare device: device-1, device-2, ...)" {
+  component "PeriodicTelemetryTask\n<<task periodic, T = periodMs>>" as PT
+  component "SporadicAlarmTask\n<<task sporadic, interval minim 5000 ms>>" as SA
+  component "AperiodicCommandTask\n<<task aperiodic>>" as AC
+  component "TemperatureSensor" as TS
+  queue "alarmEvents\n(BlockingQueue<Double>)" as AQ
+  queue "commands\n(BlockingQueue<String>)" as CQ
+  component "MqttConnection\n(device)" as DMQ
+}
+
+node "Broker MQTT\ncontrol.aut.utcluj.ro:11188" as BR
+interface "MQTT publish/subscribe\nssatr/barla-ianos-istvan/devices/<id>/..." as MQ
+BR - MQ
+
+package "business-service" {
+  component "MqttConnection\n(service)" as SMQ
+  queue "telemetryInbox / alarmInbox / statusInbox" as INQ
+  component "MessageProcessor x3\n(telemetry, alarm, status)" as MP
+  component "CsvStorage" as CSV
+  component "Dashboard" as DB
+  component "CommandConsole" as CC
+  database "data/telemetry.csv\ndata/alarm.csv\ndata/status.csv" as FILES
+}
+
+' --- device ---
+PT --> TS : read()
+PT --> AQ : offer(t) daca t > prag
+AQ --> SA : take()
+DMQ --> CQ : put(comanda)
+CQ --> AC : take()
+AC --> PT : setPeriodMs() / setThreshold()
+AC --> TS : reset()
+PT --> DMQ : publish telemetry
+SA --> DMQ : publish alarm
+AC --> DMQ : publish status
+DMQ ..> MQ : pub: telemetry, alarm, status\nsub: commands
+
+' --- service ---
+SMQ ..> MQ : sub: +/telemetry, +/alarm, +/status\npub: <id>/commands
+SMQ --> INQ : put(mesaj)
+INQ --> MP : take()
+MP --> CSV : append(kind, mesaj)
+CSV --> FILES
+MP --> DB : updateTelemetry() / registerAlarm() / updateStatus()
+Operator --> CC : show | <id> <COMANDA>
+CC --> DB : print()
+CC --> SMQ : publish comanda
+@enduml

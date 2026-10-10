@@ -1,0 +1,42 @@
+@startuml secventa-alarma
+title Scenariul 1 - telemetrie peste prag, care produce o alarma
+
+participant "PeriodicTelemetryTask" as PT
+participant "TemperatureSensor" as TS
+queue "alarmEvents" as AQ
+participant "SporadicAlarmTask" as SA
+participant "MqttConnection\n(device)" as DMQ
+participant "Broker MQTT" as BR
+participant "MessageProcessor\n(telemetry / alarm)" as MP
+participant "CsvStorage" as CSV
+participant "Dashboard" as DB
+
+== Eliberare r_k a taskului periodic (pe grila, asteptare absoluta) ==
+PT -> TS : read()
+TS --> PT : 29.65
+PT -> DMQ : publish(telemetry, "device-1;ts;29.65")
+DMQ ->> BR : PUBLISH .../device-1/telemetry
+BR ->> MP : livreaza mesajul (telemetryInbox)
+MP -> CSV : append("telemetry", mesaj)
+MP -> DB : updateTelemetry("device-1", 29.65)
+
+PT -> PT : 29.65 > prag 28.00
+PT ->> AQ : offer(29.65)
+note right of PT : taskul periodic nu trateaza alarma,\ndoar semnaleaza evenimentul\nsi isi continua grila
+
+== Eliberarea jobului sporadic ==
+AQ -> SA : take() -> 29.65
+SA -> SA : au trecut >= 5000 ms\nde la ultima alarma acceptata?
+
+alt interval respectat (alarma acceptata)
+  SA -> DMQ : publish(alarm, "device-1;ts;29.65;28.00")
+  DMQ ->> BR : PUBLISH .../device-1/alarm
+  BR ->> MP : livreaza mesajul (alarmInbox)
+  MP -> CSV : append("alarm", mesaj)
+  MP -> DB : registerAlarm("device-1", 29.65)
+  MP -> MP : afiseaza imediat [ALARMA]
+  SA -> SA : R <= D (300 ms)?
+else interval incalcat (alarma respinsa)
+  SA -> SA : afiseaza RESPINS\n(nu se publica nimic)
+end
+@enduml

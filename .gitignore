@@ -37,3 +37,5 @@ modules.order
 # Fișiere locale Claude Code (nu se publică)
 CLAUDE.md
 .claude/
+
+data/

@@ -1,0 +1,88 @@
+@startuml diagrama-de-timp
+title Taskurile device-ului pe ~10 s\n(T = 2000 ms, apoi 1000 ms dupa SET_INTERVAL; interval minim alarme = 5000 ms; D alarma = 300 ms)
+
+scale 1000 as 150 pixels
+
+concise "Periodic\n(telemetrie)" as P
+concise "Sporadic\n(alarma)" as S
+concise "Aperiodic\n(comenzi)" as A
+
+@0
+P is J0
+S is {-}
+A is {-}
+
+@150
+P is {-}
+
+@2000
+P is J1
+P -> S : 29.70 > 28
+
+@2050
+S is ALARMA
+
+@2150
+P is {-}
+
+@2300
+S is {-}
+
+@4000
+P is J2
+P -> S : 28.90 > 28
+
+@4150
+P is {-}
+
+@6000
+P is J3
+
+@6150
+P is {-}
+
+@6500
+A is CMD
+
+@6700
+A is {-}
+
+@8000
+P is J4
+P -> S : 30.10 > 28
+
+@8050
+S is ALARMA
+
+@8150
+P is {-}
+
+@8300
+S is {-}
+
+@9000
+P is J5
+
+@9150
+P is {-}
+
+@10000
+P is J6
+
+@10150
+P is {-}
+
+P@0 <-> @2000 : T = 2000 ms
+P@8000 <-> @9000 : T = 1000 ms
+S@2000 <-> @2300 : D = 300 ms
+S@2000 <-> @8000 : 6000 ms >= 5000 ms (acceptata)
+highlight 4000 to 4150 #Pink : RESPINSA\n(2000 ms < 5000 ms)
+highlight 6500 to 6700 #LightBlue : SET_INTERVAL 1000
+
+legend bottom
+  J0..J6 = joburile taskului periodic, eliberate pe grila r_k = r_0 + k*T
+  ALARMA = job sporadic acceptat; zona roz = eveniment respins (interval minim incalcat)
+  CMD = job aperiodic (SET_INTERVAL 1000): noua perioada se aplica de la urmatoarea eliberare (8000 ms)
+  Duratele joburilor sunt exagerate pentru vizibilitate (in realitate C = cativa ms)
+endlegend
+@enduml
