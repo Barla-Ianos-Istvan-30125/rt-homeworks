@@ -3,22 +3,6 @@ package ssatr.device;
 import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 
-/**
- * TASK APERIODIC: execută comenzile primite de la business service.
- *
- * Comenzile sosesc oricând, pe MQTT, fără un interval minim între ele, și sunt
- * puse în coada commands. Fiecare comandă eliberează un job al taskului.
- * Comenzi care trebuie suportate:
- *
- *   SET_INTERVAL <ms>       schimbă perioada T a taskului periodic
- *   SET_THRESHOLD <valoare> schimbă pragul de alarmă
- *   RESET                   readuce senzorul la valoarea inițială
- *   STATUS                  raportează perioada și pragul curente
- *
- * După executarea fiecărei comenzi, device-ul publică pe Config.statusTopic(deviceId)
- * o confirmare: "deviceId;timestamp;text", de exemplu
- * "device-1;1727600000000;OK SET_INTERVAL 1000".
- */
 public class AperiodicCommandTask implements Runnable {
 
     private final String deviceId;
@@ -40,14 +24,14 @@ public class AperiodicCommandTask implements Runnable {
     public void run() {
         try {
             while (true) {
-                String command = commands.take();   // așteaptă (blocat) următoarea comandă, în ordinea sosirii
+                String command = commands.take();
                 long start = System.currentTimeMillis();
 
                 String result;
                 try {
                     result = "OK " + execute(command);
                 } catch (Exception e) {
-                    // comandă greșită: raportăm eroarea, dar taskul continuă
+
                     result = "ERROR " + e.getMessage();
                 }
 
@@ -60,7 +44,7 @@ public class AperiodicCommandTask implements Runnable {
         }
     }
 
-    /** Execută o comandă și întoarce textul confirmării (fără "OK"). Aruncă excepție dacă e invalidă. */
+
     private String execute(String command) {
         String[] parts = command.trim().split("\\s+");
         String name = parts[0].toUpperCase();
@@ -114,7 +98,7 @@ public class AperiodicCommandTask implements Runnable {
         }
     }
 
-    /** Publică confirmarea pe topic-ul status: "deviceId;timestamp;text". */
+
     private void publishStatus(String text) {
         mqtt.publish(Config.statusTopic(deviceId), deviceId + ";" + System.currentTimeMillis() + ";" + text);
     }

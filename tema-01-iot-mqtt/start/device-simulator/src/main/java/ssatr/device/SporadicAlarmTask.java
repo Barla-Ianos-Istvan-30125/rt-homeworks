@@ -3,11 +3,7 @@ package ssatr.device;
 import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 
-/**
- * TASK SPORADIC: tratează alarmele de temperatură.
- * Impune intervalul minim între sosiri MIN_INTERARRIVAL_MS:
- * evenimentele care sosesc mai des sunt respinse.
- */
+
 public class SporadicAlarmTask implements Runnable {
 
     static final long MIN_INTERARRIVAL_MS = 5000;
@@ -16,7 +12,7 @@ public class SporadicAlarmTask implements Runnable {
     private final String deviceId;
     private final MqttConnection mqtt;
     private final BlockingQueue<Double> alarmEvents;
-    private final PeriodicTelemetryTask periodic;   // de aici citim pragul curent
+    private final PeriodicTelemetryTask periodic;
 
     private long lastRelease = 0;
 
@@ -32,8 +28,8 @@ public class SporadicAlarmTask implements Runnable {
     public void run() {
         try {
             while (true) {
-                double t = alarmEvents.take();              // așteaptă (blocat) un eveniment
-                long release = System.currentTimeMillis();  // eliberarea jobului
+                double t = alarmEvents.take();
+                long release = System.currentTimeMillis();
 
                 long sinceLast = release - lastRelease;
                 if (sinceLast < MIN_INTERARRIVAL_MS) {
@@ -43,7 +39,7 @@ public class SporadicAlarmTask implements Runnable {
                 }
                 lastRelease = release;
 
-                // jobul: publicarea alarmei
+
                 String payload = deviceId + ";" + release + ";"
                         + String.format(Locale.US, "%.2f", t) + ";"
                         + String.format(Locale.US, "%.2f", periodic.getThreshold());

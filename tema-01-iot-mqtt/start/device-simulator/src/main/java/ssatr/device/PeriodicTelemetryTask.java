@@ -4,14 +4,7 @@ import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-/**
- * TASK PERIODIC, cu perioada T = periodMs: fiecare job citește senzorul și
- * publică valoarea pe topic-ul de telemetrie.
- *
- * Dacă temperatura depășește pragul, taskul NU tratează el alarma, ci doar
- * semnalează un eveniment în coada alarmEvents. Alarma este tratată de
- * taskul sporadic.
- */
+
 public class PeriodicTelemetryTask implements Runnable {
 
     private final String deviceId;
@@ -19,7 +12,6 @@ public class PeriodicTelemetryTask implements Runnable {
     private final MqttConnection mqtt;
     private final BlockingQueue<Double> alarmEvents;
 
-    // volatile: sunt citite aici, dar modificate de taskul aperiodic (alt thread)
     private volatile long periodMs = 2000;
     private volatile double threshold = 28.0;
 
@@ -33,19 +25,18 @@ public class PeriodicTelemetryTask implements Runnable {
 
     @Override
     public void run() {
-        // r0 = momentul primei eliberări; grila se calculează pe timp monoton
+
         long next = System.nanoTime();
         long k = 0;
 
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                // 1. așteptare ABSOLUTĂ până la eliberarea r_k de pe grilă
+
                 long wait = next - System.nanoTime();
                 if (wait > 0) {
                     TimeUnit.NANOSECONDS.sleep(wait);
                 }
 
-                // 2. jobul k: citire senzor + publicare
                 long lateMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - next);
                 double t = sensor.read();
                 long timestamp = System.currentTimeMillis();
@@ -55,16 +46,13 @@ public class PeriodicTelemetryTask implements Runnable {
                 System.out.printf("[periodic] job %d  T=%d ms  intarziere=%d ms  -> %s%n",
                         k, periodMs, lateMs, payload);
 
-                // 3. depășire de prag: doar semnalăm evenimentul, alarma e tratată de taskul sporadic
                 if (t > threshold) {
                     alarmEvents.offer(t);
                 }
 
-                // 4. următoarea eliberare: r_{k+1} = r_k + T (periodMs citit din nou, poate fi schimbat)
                 long periodNs = TimeUnit.MILLISECONDS.toNanos(periodMs);
                 next += periodNs;
 
-                // dacă jobul a depășit perioada, sărim peste eliberările pierdute, rămânând pe grilă
                 long now = System.nanoTime();
                 if (now > next) {
                     long missed = (now - next) / periodNs + 1;
@@ -73,7 +61,7 @@ public class PeriodicTelemetryTask implements Runnable {
                 k++;
             }
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt(); // oprire curată a taskului
+            Thread.currentThread().interrupt();
         }
     }
 
