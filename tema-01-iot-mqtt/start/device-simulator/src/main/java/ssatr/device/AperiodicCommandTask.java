@@ -4,7 +4,6 @@ import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 
 public class AperiodicCommandTask implements Runnable {
-
     private final String deviceId;
     private final TemperatureSensor sensor;
     private final MqttConnection mqtt;
@@ -24,17 +23,19 @@ public class AperiodicCommandTask implements Runnable {
     public void run() {
         try {
             while (true) {
+                // FIFO - comenzile se iau in ordinea in care au sosit
                 String command = commands.take();
                 long start = System.currentTimeMillis();
 
+                // orice eroare devine mesaj ERROR, taskul nu se opreste
                 String result;
                 try {
                     result = "OK " + execute(command);
                 } catch (Exception e) {
-
                     result = "ERROR " + e.getMessage();
                 }
 
+                // raspuns pe topicul status
                 publishStatus(result);
                 System.out.printf("[aperiodic] '%s' -> %s (executie %d ms, in coada: %d)%n",
                         command, result, System.currentTimeMillis() - start, commands.size());
@@ -44,14 +45,15 @@ public class AperiodicCommandTask implements Runnable {
         }
     }
 
-
     private String execute(String command) {
+        // parts[0] = comanda, parts[1] = valoarea
         String[] parts = command.trim().split("\\s+");
         String name = parts[0].toUpperCase();
 
         switch (name) {
             case "SET_INTERVAL": {
                 long ms = parseLong(parts, name);
+                // perioada prea mica nu e acceptata
                 if (ms < 100) {
                     throw new IllegalArgumentException("SET_INTERVAL: perioada trebuie sa fie >= 100 ms");
                 }
@@ -76,6 +78,7 @@ public class AperiodicCommandTask implements Runnable {
         }
     }
 
+    // parametru lipsa sau invalid -> exceptie -> ERROR
     private long parseLong(String[] parts, String name) {
         if (parts.length < 2) {
             throw new IllegalArgumentException(name + ": lipseste parametrul");
@@ -98,7 +101,7 @@ public class AperiodicCommandTask implements Runnable {
         }
     }
 
-
+    // format: deviceId;timestamp;text
     private void publishStatus(String text) {
         mqtt.publish(Config.statusTopic(deviceId), deviceId + ";" + System.currentTimeMillis() + ";" + text);
     }

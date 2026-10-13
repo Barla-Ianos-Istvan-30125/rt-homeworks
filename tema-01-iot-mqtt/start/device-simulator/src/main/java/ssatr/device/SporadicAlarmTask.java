@@ -3,9 +3,8 @@ package ssatr.device;
 import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 
-
 public class SporadicAlarmTask implements Runnable {
-
+    // interval minim intre sosiri si termenul limita
     static final long MIN_INTERARRIVAL_MS = 5000;
     static final long DEADLINE_MS = 300;
 
@@ -14,6 +13,7 @@ public class SporadicAlarmTask implements Runnable {
     private final BlockingQueue<Double> alarmEvents;
     private final PeriodicTelemetryTask periodic;
 
+    // momentul ultimei alarme acceptate
     private long lastRelease = 0;
 
     public SporadicAlarmTask(String deviceId, MqttConnection mqtt, BlockingQueue<Double> alarmEvents,
@@ -28,9 +28,11 @@ public class SporadicAlarmTask implements Runnable {
     public void run() {
         try {
             while (true) {
+                // blocat pana apare o depasire de prag
                 double t = alarmEvents.take();
                 long release = System.currentTimeMillis();
 
+                // interval minim intre sosiri incalcat -> eveniment ignorat
                 long sinceLast = release - lastRelease;
                 if (sinceLast < MIN_INTERARRIVAL_MS) {
                     System.out.printf(Locale.US, "[sporadic] RESPINS t=%.2f: au trecut doar %d ms (minim %d ms)%n",
@@ -39,12 +41,13 @@ public class SporadicAlarmTask implements Runnable {
                 }
                 lastRelease = release;
 
-
+                // format: deviceId;timestamp;temperatura;prag
                 String payload = deviceId + ";" + release + ";"
                         + String.format(Locale.US, "%.2f", t) + ";"
                         + String.format(Locale.US, "%.2f", periodic.getThreshold());
                 mqtt.publish(Config.alarmTopic(deviceId), payload);
 
+                // R = terminare - eliberare, comparat cu D
                 long responseTime = System.currentTimeMillis() - release;
                 System.out.printf("[sporadic] ALARMA R=%d ms -> %s (D=%d ms) -> %s%n",
                         responseTime, responseTime <= DEADLINE_MS ? "termen respectat" : "TERMEN RATAT",
